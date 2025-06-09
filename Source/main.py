@@ -5,8 +5,8 @@ import random
 
 #initialize pygame window
 pygame.init()
-screenWidth = 800
-screenHeight = 600
+screenWidth = 1200
+screenHeight = 900
 screen = pygame.display.set_mode((screenWidth, screenHeight))
 pygame.display.set_caption('Learning Cars')
 
@@ -45,6 +45,9 @@ class Car():
             (self.pos[0] - 7, self.pos[1] + 7)
         ]
 
+        #road references
+        self.closestTweenPoint = None
+
     def updateVerts(self):
         for i in range(len(self.verts)):
             #update pos
@@ -56,6 +59,10 @@ class Car():
     def draw(self):
         self.updateVerts()
         pygame.draw.polygon(screen, (255, 255, 255), self.verts, 2)
+
+        #draw line towards closest tween point
+        if self.closestTweenPoint != None:
+            pygame.draw.line(screen, (0, 0, 255), self.pos, self.closestTweenPoint)
 
     def move(self, dTs):
         #apply friction
@@ -84,6 +91,77 @@ class Car():
         #normalize angle
         self.angle = self.angle % 360
 
+    def getClosestTweenPoint(self, points):
+        closestPoint = None
+        closestDist = math.inf
+        for i in range(len(points)):
+            vec = (self.pos[0] - points[i][0], self.pos[1] - points[i][1])
+            dist = vec[0] ** 2 + vec[1] ** 2
+
+            if dist < closestDist:
+                closestDist = dist
+                closestPoint = points[i]
+        self.closestTweenPoint = closestPoint
+
+class Road():
+    def __init__(self):
+        self.cornerPoints = [
+            (249, 440),
+            (191, 403),
+            (124, 361),
+            (134, 298),
+            (194, 278),
+            (232, 249),
+            (276, 190),
+            (361, 108),
+            (578, 63),
+            (824, 60),
+            (869, 154),
+            (1041, 206),
+            (1059, 335),
+            (941, 458),
+            (1026, 624),
+            (894, 772),
+            (801, 668),
+            (773, 548),
+            (755, 473),
+            (690, 340),
+            (552, 313),
+            (503, 459),
+            (585, 653),
+            (674, 829),
+            (421, 844),
+            (355, 698),
+            (186, 582)
+        ]
+
+        self.cornerTweenPoints = []
+        self.tweenAccuracy = 5
+
+        #initialize tween points
+        for i in range(len(self.cornerPoints)):
+            for j in range(self.tweenAccuracy):
+                #get vector to next road
+                nextIndex = (i + 1) % len(self.cornerPoints)
+                v = (self.cornerPoints[nextIndex][0] - self.cornerPoints[i][0], self.cornerPoints[nextIndex][1] - self.cornerPoints[i][1])
+
+                #create new tween point
+                self.cornerTweenPoints.append((self.cornerPoints[i][0] + v[0] * (j / self.tweenAccuracy), self.cornerPoints[i][1] + v[1] * (j / self.tweenAccuracy)))
+
+    def drawRoad(self):
+        #draw road lines
+        for i in range(len(self.cornerPoints)):
+            nextIndex = (i + 1) % len(self.cornerPoints)
+            pygame.draw.line(screen, (120, 120, 120), self.cornerPoints[i], self.cornerPoints[nextIndex])
+            
+        #draw tween points
+        for i in range(len(self.cornerTweenPoints)):
+            pygame.draw.circle(screen, (255, 255, 255), self.cornerTweenPoints[i], 2)
+
+        #draw corner points
+        for i in range(len(self.cornerPoints)):
+            pygame.draw.circle(screen, (255, 0, 0), self.cornerPoints[i], 3)
+
 #FUNCTION DEFINITION - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 def rotatePoint(point, center, angleDeg):
@@ -109,6 +187,7 @@ def rotatePoint(point, center, angleDeg):
 #VARIABLE INITIALIZATION -----------------------------------------------------------------------------------------------------------------------------------------
 
 car = Car(screenWidth/2, screenHeight/2)
+road = Road()
 
 #get initial ticks
 prevT = pygame.time.get_ticks()
@@ -135,6 +214,10 @@ while running:
             if event.key == pygame.K_SPACE:
                 pass
 
+        #track builder for road verts
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            print(pygame.mouse.get_pos())
+
     keys = pygame.key.get_pressed()
     if keys[pygame.K_w]:
         car.throttle(dTs)
@@ -146,7 +229,11 @@ while running:
     #update physics
     car.move(dTs)
 
+    #other
+    car.getClosestTweenPoint(road.cornerTweenPoints)
+
     #draw
+    road.drawRoad()
     car.draw()
 
     # Update the display (buffer flip)
