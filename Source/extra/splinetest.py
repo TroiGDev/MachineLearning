@@ -92,8 +92,8 @@ class RoadOutlineGenerator:
 
 # Example points forming a curved road
 points = np.array([
-    [0, 0], [1, 0.5], [2, 1], [3, 1.5], [4, 2],
-    [5, 1.5], [6, 1], [7, 0.5], [8, 0]
+    [0, 0], [10, 5], [20, 10], [30, 15], [40, 20],
+    [50, 15], [60, 10], [70, 5], [80, 10]
 ])
 
 # Create road outline generator
