@@ -35,13 +35,13 @@ class Car():
         self.vertOffsets = [
             (0, -15), 
             (7, 7), 
-            (0, 2), 
+            (0, 11), 
             (-7, 7)
         ]
         self.verts = [
             (self.pos[0] + 0, self.pos[1] - 15), 
             (self.pos[0] + 7, self.pos[1] + 7), 
-            (self.pos[0] + 0, self.pos[1] + 2), 
+            (self.pos[0] + 0, self.pos[1] + 11), 
             (self.pos[0] - 7, self.pos[1] + 7)
         ]
 
@@ -106,33 +106,17 @@ class Car():
 class Road():
     def __init__(self):
         self.cornerPoints = [
-            (249, 440),
-            (191, 403),
-            (124, 361),
-            (134, 298),
-            (194, 278),
-            (232, 249),
-            (276, 190),
-            (361, 108),
-            (578, 63),
-            (824, 60),
-            (869, 154),
-            (1041, 206),
-            (1059, 335),
-            (941, 458),
-            (1026, 624),
-            (894, 772),
-            (801, 668),
-            (773, 548),
-            (755, 473),
-            (690, 340),
-            (552, 313),
-            (503, 459),
-            (585, 653),
-            (674, 829),
-            (421, 844),
-            (355, 698),
-            (186, 582)
+            (963, 485),
+            (726, 694),
+            (533, 532),
+            (271, 666),
+            (140, 571),
+            (149, 331),
+            (249, 145),
+            (353, 209),
+            (546, 285),
+            (885, 152),
+            (1064, 333)
         ]
 
         self.cornerTweenPoints = []
@@ -148,6 +132,89 @@ class Road():
                 #create new tween point
                 self.cornerTweenPoints.append((self.cornerPoints[i][0] + v[0] * (j / self.tweenAccuracy), self.cornerPoints[i][1] + v[1] * (j / self.tweenAccuracy)))
 
+        #initialize track sides
+        self.roadThickness = 60
+
+        #generate left and right side seperatly
+        self.leftSidePoints = []
+        self.rightSidePoints = []
+
+        #generate left side points
+        for i in range (len(self.cornerPoints)):
+            #get center line direction
+            nextIndex = (i + 1) % len(self.cornerPoints)
+            dir = (self.cornerPoints[nextIndex][0] - self.cornerPoints[i][0], self.cornerPoints[nextIndex][1] - self.cornerPoints[i][1])
+
+            #get normalized direction
+            dirMag = math.sqrt(dir[0] ** 2 + dir[1] ** 2)
+            dirNorm = (dir[0] / dirMag, dir[1] / dirMag)
+
+            #rotate it by 90 left for left side
+            dirLeft = (-dirNorm[1], dirNorm[0])
+
+            #generate center line copy (as premica) offset by vector * roadthickness
+            copyStart = (self.cornerPoints[i][0] + dirLeft[0] * self.roadThickness, self.cornerPoints[i][1] + dirLeft[1] * self.roadThickness)
+            copyEnd = (self.cornerPoints[nextIndex][0] + dirLeft[0] * self.roadThickness, self.cornerPoints[nextIndex][1] + dirLeft[1] * self.roadThickness)
+
+            #append to array
+            self.leftSidePoints.append(copyStart)
+            self.leftSidePoints.append(copyEnd)
+
+        #generate rigfht side points
+        for i in range (len(self.cornerPoints)):
+            #get center line direction
+            nextIndex = (i + 1) % len(self.cornerPoints)
+            dir = (self.cornerPoints[nextIndex][0] - self.cornerPoints[i][0], self.cornerPoints[nextIndex][1] - self.cornerPoints[i][1])
+
+            #get normalized direction
+            dirMag = math.sqrt(dir[0] ** 2 + dir[1] ** 2)
+            dirNorm = (dir[0] / dirMag, dir[1] / dirMag)
+
+            #rotate it by 90 right for right side
+            dirLeft = (dirNorm[1], -dirNorm[0])
+
+            #generate center line copy (as premica) offset by vector * roadthickness
+            copyStart = (self.cornerPoints[i][0] + dirLeft[0] * self.roadThickness, self.cornerPoints[i][1] + dirLeft[1] * self.roadThickness)
+            copyEnd = (self.cornerPoints[nextIndex][0] + dirLeft[0] * self.roadThickness, self.cornerPoints[nextIndex][1] + dirLeft[1] * self.roadThickness)
+
+            #append to array
+            self.rightSidePoints.append(copyStart)
+            self.rightSidePoints.append(copyEnd)
+
+        #go through line loops and remove intersection (this leaves nonintersection corners squared of instead of pointy)
+        for i in range(len(self.cornerPoints)):
+            nextIndex = (i + 1) % len(self.cornerPoints)
+
+            firstStart = self.leftSidePoints[i * 2]
+            firstEnd = self.leftSidePoints[i * 2 + 1]
+
+            secondStart = self.leftSidePoints[nextIndex * 2]
+            secodnEnd = self.leftSidePoints[nextIndex * 2 + 1]
+
+            #get line intersection
+            intersection = linenItersection(firstStart, firstEnd, secondStart, secodnEnd)
+
+            if intersection != None:
+                self.leftSidePoints[i * 2 + 1] = intersection
+                self.leftSidePoints[nextIndex * 2] = intersection
+
+        #repeat for right side
+        for i in range(len(self.cornerPoints)):
+            nextIndex = (i + 1) % len(self.cornerPoints)
+
+            firstStart = self.rightSidePoints[i * 2]
+            firstEnd = self.rightSidePoints[i * 2 + 1]
+
+            secondStart = self.rightSidePoints[nextIndex * 2]
+            secodnEnd = self.rightSidePoints[nextIndex * 2 + 1]
+
+            #get line intersection
+            intersection = linenItersection(firstStart, firstEnd, secondStart, secodnEnd)
+
+            if intersection != None:
+                self.rightSidePoints[i * 2 + 1] = intersection
+                self.rightSidePoints[nextIndex * 2] = intersection
+
     def drawRoad(self):
         #draw road lines
         for i in range(len(self.cornerPoints)):
@@ -159,8 +226,19 @@ class Road():
             pygame.draw.circle(screen, (255, 255, 255), self.cornerTweenPoints[i], 2)
 
         #draw corner points
-        for i in range(len(self.cornerPoints)):
-            pygame.draw.circle(screen, (255, 0, 0), self.cornerPoints[i], 3)
+        """for i in range(len(self.cornerPoints)):
+            pygame.draw.circle(screen, (255, 0, 0), self.cornerPoints[i], 3)"""
+
+        #draw sidelines
+        for i in range(len(self.rightSidePoints)):
+            nextIndex = (i + 1) % len(self.rightSidePoints)
+            pygame.draw.line(screen, (0, 120, 0), self.leftSidePoints[i], self.leftSidePoints[nextIndex])
+            pygame.draw.line(screen, (0, 120, 0), self.rightSidePoints[i], self.rightSidePoints[nextIndex])
+
+        #draw side points
+        """for i in range(len(self.rightSidePoints)):
+            pygame.draw.circle(screen, (0, 255, 0), self.leftSidePoints[i], 3)
+            pygame.draw.circle(screen, (0, 255, 0), self.rightSidePoints[i], 3)"""
 
 #FUNCTION DEFINITION - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -183,6 +261,29 @@ def rotatePoint(point, center, angleDeg):
     fy = ry + cy
 
     return (fx, fy)
+
+def linenItersection(p1, p2, p3, p4):   #for infinetly long lines
+    #math generated by ChatGPT
+
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    x4, y4 = p4
+
+    # Calculate the denominators
+    denom = (y4 - y3)*(x2 - x1) - (x4 - x3)*(y2 - y1)
+    if denom == 0:
+        # Lines are parallel or coincident
+        return None
+
+    # Calculate the numerators
+    ua = ((x4 - x3)*(y1 - y3) - (y4 - y3)*(x1 - x3)) / denom
+
+    # Get final point coordinates
+    x = x1 + ua * (x2 - x1)
+    y = y1 + ua * (y2 - y1)
+    
+    return (x, y)
 
 #VARIABLE INITIALIZATION -----------------------------------------------------------------------------------------------------------------------------------------
 
