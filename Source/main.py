@@ -97,8 +97,10 @@ class Car():
             pygame.draw.line(screen, (0, 0, 255), self.pos, self.closestTweenPoint)
 
     def move(self, dTs):
-        #apply friction
-        self.vel = (self.vel[0] * self.friction, self.vel[1] * self.friction)
+        #apply friction with deltatime
+        frictionPerSecond = self.friction ** 60
+        frictionDeltaTime = frictionPerSecond ** dTs
+        self.vel = (self.vel[0] * frictionDeltaTime, self.vel[1] * frictionDeltaTime)
 
         #apply velocity
         self.pos = (self.pos[0] + self.vel[0] * dTs, self.pos[1] + self.vel[1] * dTs)
