@@ -18,7 +18,50 @@ def displayFPS(screen, font_size):
     fps_text = font.render(f"{fps}", True, (255, 255, 255))
     screen.blit(fps_text, (10, 10))
 
+font = pygame.font.SysFont(None, 25)
+
 #CLASS DEFINITION -----------------------------------------------------------------------------------------------------------------------------------------
+
+class NeuralNetwork():
+    def __init__(self, inputSize, hiddenSize, outputSize):
+        self.inputSize = inputSize
+        self.hiddenSize = hiddenSize
+        self.outputSize = outputSize
+
+        #weights and biases
+        self.weights_inputToHidden = [[random.uniform(-1, 1) for _ in range(inputSize)] for _ in range(hiddenSize)]
+        self.weights_hiddenToOutput = [[random.uniform(-1, 1) for _ in range(hiddenSize)] for _ in range(outputSize)]
+
+        self.bias_hidden = [random.uniform(-1, 1) for _ in range(hiddenSize)]
+        self.bias_output = [random.uniform(-1, 1) for _ in range(outputSize)]
+
+    def iterateForward(self, inputs):
+
+        #get hidden layer calculations
+        hidden = []
+        for i in range(len(self.weights_inputToHidden)):
+            activation = sum(w * inp for w, inp in zip(self.weights_inputToHidden[i], inputs)) + self.bias_hidden[i]
+            hidden.append(sigmoid(activation))
+
+        #get output layer calculations
+        outputs = []
+        for i in range(len(self.weights_hiddenToOutput)):
+            activation = sum(w * h for w, h in zip(self.weights_hiddenToOutput[i], hidden)) + self.bias_output[i]
+            outputs.append(sigmoid(activation))
+
+        return outputs
+
+    def interpretOutputAsAction(self, output):
+        # Let's say:
+        # output[0] = turn left strength (0 to 1)
+        # output[1] = turn right strength (0 to 1)
+        # output[2] = throttle (0 = off, 1 = on)
+
+        turn = (output[1] - output[0]) * 2
+
+        throttle = output[2]
+
+        return turn, throttle
 
 class Car():
     def __init__(self, x, y):
@@ -27,8 +70,8 @@ class Car():
         self.angle = 0
         self.vel = (0, 0)
         self.friction = 0.98
-        self.accelaration = 520
-        self.maxVel = 520
+        self.accelaration = 240
+        self.maxVel = 240
         self.turnRate = 150
 
         #visuals
@@ -63,7 +106,17 @@ class Car():
             #initial update
             self.rayVerts.append((self.pos[0] + self.rayVertOffsets[i][0], self.pos[1] + self.rayVertOffsets[i][1]))
 
-        self.isOnRoad = True
+        self.rayIntersections = [(self.rayVerts[i][0], self.rayVerts[i][1]) for i in range(self.numOfRays)]
+
+        self.dead = False
+
+        #neuralnetwork stuff
+        cars.append(self)
+
+        self.nn = NeuralNetwork(self.numOfRays + 1, 6, 3)
+        self.fitness = 0
+
+        self.life = 20
 
     def updateVerts(self):
         for i in range(len(self.verts)):
@@ -82,10 +135,10 @@ class Car():
         self.updateVerts()
 
         #draw ray lines
-        for i in range(self.numOfRays):
-            pygame.draw.line(screen, (80, 0, 0), self.pos, self.rayVerts[i], 1)
+        """for i in range(self.numOfRays):
+            pygame.draw.line(screen, (80, 0, 0), self.pos, self.rayVerts[i], 1)"""
 
-        if self.isOnRoad:
+        if not self.dead:
             carColor = (255, 255, 255)
         else:
             carColor = (100, 100, 100)
@@ -93,10 +146,10 @@ class Car():
         pygame.draw.polygon(screen, carColor, self.verts, 2)
 
         #draw line towards closest tween point
-        if self.closestTweenPoint != None:
-            pygame.draw.line(screen, (0, 0, 255), self.pos, self.closestTweenPoint)
+        """if self.closestTweenPoint != None:
+            pygame.draw.line(screen, (0, 0, 255), self.pos, self.closestTweenPoint)"""
 
-    def move(self, dTs):
+    def move(self, dTs, road):
         #apply friction with deltatime
         frictionPerSecond = self.friction ** 60
         frictionDeltaTime = frictionPerSecond ** dTs
@@ -105,11 +158,20 @@ class Car():
         #apply velocity
         self.pos = (self.pos[0] + self.vel[0] * dTs, self.pos[1] + self.vel[1] * dTs)
 
-    def throttle(self, dTs):
+        #get updated fitness
+        if self.closestTweenPoint != None:
+            self.fitness = road.cornerTweenPoints.index(self.closestTweenPoint)
+
+        #update life 
+        self.life -= 1 * dTs
+        if self.life <= 0:
+            self.dead = True
+
+    def throttle(self, strengthFactor, dTs):
         #apply accelaration forward
         angleRad = math.radians(self.angle - 90)
         accelaration = (math.cos(angleRad) * self.accelaration, math.sin(angleRad) * self.accelaration)
-        self.vel = (self.vel[0] + accelaration[0] * dTs, self.vel[1] + accelaration[1] * dTs)
+        self.vel = (self.vel[0] + accelaration[0]* strengthFactor * dTs, self.vel[1] + accelaration[1] * strengthFactor * dTs)
 
         #clamp to max speed if neccesary
         mag = math.sqrt(self.vel[0] ** 2 + self.vel[1] ** 2)
@@ -174,7 +236,8 @@ class Car():
 
             #draw dot
             if closestIndex != None:
-                pygame.draw.circle(screen, (255, 255, 0), intersections[closestIndex], 3)
+                """pygame.draw.circle(screen, (255, 255, 0), intersections[closestIndex], 3)"""
+                self.rayIntersections[i] = intersections[closestIndex]
 
         #check if car is on the road
         numOfIntersections = 0
@@ -193,29 +256,60 @@ class Car():
                     numOfIntersections += 1
         
         #do some even-odd trick
-        if numOfIntersections % 2 == 1:
-            self.isOnRoad = True
-        else:
-            self.isOnRoad = False
+        if numOfIntersections % 2 != 1:
+            self.dead = True
+
+    def performAction(self, dTs):
+        #get inputs
+        inputs = []
+
+        #add distance to intersections
+        for i in range(self.numOfRays):
+            vec = (self.pos[0] - self.rayIntersections[i][0], self.pos[1] - self.rayIntersections[i][1])
+            mag = math.sqrt(vec[0] ** 2 + vec[1] ** 2)
+            inputs.append(mag)
+
+        #add velocity magnitude
+        inputs.append(math.sqrt(self.vel[0] ** 2 + self.vel[1] ** 2))
+
+        #normalize inputs
+        for i in range(self.numOfRays):
+            inputs[i] = inputs[i] / self.rayLength
+
+        inputs[-1] = inputs[-1] / self.maxVel
+
+        #get outputs
+        outputs = self.nn.iterateForward(inputs)
+
+        #interpet outputs
+        outputCalls = self.nn.interpretOutputAsAction(outputs)
+
+        #perform action
+        self.turn(outputCalls[0], dTs)
+        self.throttle(outputCalls[1], dTs)
 
 class Road():
     def __init__(self):
         self.cornerPoints = [
-            (963, 485),
-            (726, 694),
-            (533, 532),
-            (271, 666),
-            (140, 571),
-            (149, 331),
-            (249, 145),
-            (353, 209),
-            (546, 285),
-            (885, 152),
-            (1064, 333)
+            (309, 766),
+            (184, 732),
+            (130, 631),
+            (198, 528),
+            (127, 349),
+            (262, 213),
+            (347, 72),
+            (557, 143),
+            (731, 91),
+            (853, 177),
+            (952, 333),
+            (954, 481),
+            (949, 670),
+            (824, 750),
+            (576, 796)
         ]
 
         self.cornerTweenPoints = []
-        self.tweenAccuracy = 5
+        self.tweenAccuracy = 10
 
         #initialize tween points
         for i in range(len(self.cornerPoints)):
@@ -228,7 +322,7 @@ class Road():
                 self.cornerTweenPoints.append((self.cornerPoints[i][0] + v[0] * (j / self.tweenAccuracy), self.cornerPoints[i][1] + v[1] * (j / self.tweenAccuracy)))
 
         #initialize track sides
-        self.roadThickness = 60
+        self.roadThickness = 100
 
         #generate left and right side seperatly
         self.leftSidePoints = []
@@ -410,10 +504,41 @@ def angleToVector(deg):
     y = math.sin(rad)
     return (x, y)
 
+# NEURAL NETWORK STUFF ----------------------------
+
+def sigmoid(x):
+    return 1 / (1 + math.exp(-x))
+
+def mutate2D(weights, mutationRate = 0.4, mutationStrength = 0.01):
+    new_weights = weights
+
+    for i in range(len(new_weights)):
+        for j in range(len(new_weights[i])):
+            if random.random() < mutationRate:
+                new_weights[i][j] += random.gauss(0, mutationStrength)
+
+    return new_weights
+
+def mutate1D(weights, mutationRate = 0.4, mutationStrength = 0.01):
+    new_weights = weights
+
+    for i in range(len(new_weights)):
+        if random.random() < mutationRate:
+            new_weights[i] += random.gauss(0, mutationStrength)
+
+    return new_weights
+
 #VARIABLE INITIALIZATION -----------------------------------------------------------------------------------------------------------------------------------------
 
-car = Car(screenWidth/2, screenHeight/2)
 road = Road()
+
+cars = []
+
+for i in range(40):
+    car = Car(151, 673)
+
+generation = 1
+alltopcars = []
 
 #get initial ticks
 prevT = pygame.time.get_ticks()
@@ -444,24 +569,69 @@ while running:
         if event.type == pygame.MOUSEBUTTONDOWN:
             print(pygame.mouse.get_pos())
 
-    keys = pygame.key.get_pressed()
+    """keys = pygame.key.get_pressed()
     if keys[pygame.K_w]:
         car.throttle(dTs)
     if keys[pygame.K_a]:
         car.turn(-1, dTs)
     if keys[pygame.K_d]:
-        car.turn(1, dTs)
+        car.turn(1, dTs)"""
     
     #update physics
-    car.move(dTs)
+    for car in cars:
+        if car.dead == False:
+            car.performAction(dTs)
+            car.move(dTs, road)
 
     #other
-    car.getClosestTweenPoint(road.cornerTweenPoints)
-    car.getIntersections(road)
+    for car in cars:
+        if car.dead == False:
+            car.getClosestTweenPoint(road.cornerTweenPoints)
+            car.getIntersections(road)
 
     #draw
     road.drawRoad()
-    car.draw()
+
+    for car in cars:
+        car.draw()
+
+    #check if gen has finished
+    allDied = False
+    numOfDead = 0
+    for car in cars:
+        if car.dead == True:
+            numOfDead += 1
+
+    if numOfDead == len(cars):
+        allDied = True
+
+    if allDied:
+        sortedCars = sorted(cars, key=lambda car: car.fitness)
+        fromIndex = int(len(sortedCars) * 0.1)
+        topCars = sortedCars[fromIndex:]
+        alltopcars.extend(topCars)
+        #copy weights of best car to all other and mutate
+        for car in cars:
+            randomParent = alltopcars[random.randint(0, len(alltopcars)-1)]
+            car.nn.weights_inputToHidden = mutate2D(randomParent.nn.weights_inputToHidden)
+            car.nn.weights_hiddenToOutput = mutate2D(randomParent.nn.weights_hiddenToOutput)
+
+            car.nn.bias_hidden = mutate1D(randomParent.nn.bias_hidden)
+            car.nn.bias_output = mutate1D(randomParent.nn.bias_output)
+
+        #reinit cars
+        for car in cars:
+            car.dead = False
+            car.life = 20
+            car.pos = (151, 673)
+            car.vel = (0, 0)
+            car.angle = 0
+
+        generation += 1
+        print(topCars[-1].fitness)
+
+    gen_text = font.render(f"{generation}", True, (255, 255, 255))
+    screen.blit(gen_text, (10, 40))
 
     # Update the display (buffer flip)
     displayFPS(screen, 25)
