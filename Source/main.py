@@ -604,6 +604,9 @@ while running:
     for car in cars:
         car.draw()
 
+    #draw dot on elite
+    pygame.draw.circle(screen, (255, 0, 0), cars[0].pos, 7, 4)
+
     #check if gen has finished
     allDied = False
     numOfDead = 0
@@ -635,17 +638,37 @@ while running:
         #introduce elitism
         cars[0] = copy.deepcopy(alltopcars[-1])
 
+        #get generations performance comparison to all time, generate mutation parameters
+        bestCurr = sortedCars[-1].fitness
+        bestAllTime = alltopcars[-1].fitness
+
+        mutationRate = 0.5
+        mutationStrength = 0.5
+
+        if bestCurr > bestAllTime:      #better, stay consistent with slight improvements
+            mutationRate = 0.01
+            mutationStrength = 0.1
+            print("perfect")
+        elif bestCurr == bestAllTime:   #same, induce exploration
+            mutationRate = 0.2
+            mutationStrength = 0.2
+            print("explore")
+        else:                           #worse, induce large mutations
+            mutationRate = 0.2
+            mutationStrength = 0.4
+            print("mutate")
+
         #copy weights of best car to all other and mutate
         for car in cars[1:]:    #skip first car, elite)
             randomParent = chosenNext[random.randint(0, len(chosenNext)-1)]
 
-            car.nn.weights_inputToHidden = mutate2D(copy.deepcopy(randomParent.nn.weights_inputToHidden))
-            car.nn.weights_hiddenToHidden = mutate2D(copy.deepcopy(randomParent.nn.weights_hiddenToHidden))
-            car.nn.weights_hiddenToOutput = mutate2D(copy.deepcopy(randomParent.nn.weights_hiddenToOutput))
+            car.nn.weights_inputToHidden = mutate2D(copy.deepcopy(randomParent.nn.weights_inputToHidden), mutationRate, mutationStrength)
+            car.nn.weights_hiddenToHidden = mutate2D(copy.deepcopy(randomParent.nn.weights_hiddenToHidden), mutationRate, mutationStrength)
+            car.nn.weights_hiddenToOutput = mutate2D(copy.deepcopy(randomParent.nn.weights_hiddenToOutput), mutationRate, mutationStrength)
 
-            car.nn.bias_hidden = mutate1D(copy.deepcopy(randomParent.nn.bias_hidden))
-            car.nn.bias_hidden2 = mutate1D(copy.deepcopy(randomParent.nn.bias_hidden2))
-            car.nn.bias_output = mutate1D(copy.deepcopy(randomParent.nn.bias_output))
+            car.nn.bias_hidden = mutate1D(copy.deepcopy(randomParent.nn.bias_hidden), mutationRate, mutationStrength)
+            car.nn.bias_hidden2 = mutate1D(copy.deepcopy(randomParent.nn.bias_hidden2), mutationRate, mutationStrength)
+            car.nn.bias_output = mutate1D(copy.deepcopy(randomParent.nn.bias_output), mutationRate, mutationStrength)
 
         #reinit cars
         for car in cars:
