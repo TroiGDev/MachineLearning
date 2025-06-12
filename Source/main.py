@@ -28,13 +28,16 @@ class NeuralNetwork():
     def __init__(self, inputSize, hiddenSize, outputSize):
         self.inputSize = inputSize
         self.hiddenSize = hiddenSize
+        self.hiddenSize2 = hiddenSize
         self.outputSize = outputSize
 
         #weights and biases
         self.weights_inputToHidden = [[random.uniform(-1, 1) for _ in range(inputSize)] for _ in range(hiddenSize)]
+        self.weights_hiddenToHidden = [[random.uniform(-1, 1) for _ in range(hiddenSize)] for _ in range(hiddenSize)]
         self.weights_hiddenToOutput = [[random.uniform(-1, 1) for _ in range(hiddenSize)] for _ in range(outputSize)]
 
         self.bias_hidden = [random.uniform(-1, 1) for _ in range(hiddenSize)]
+        self.bias_hidden2 = [random.uniform(-1, 1) for _ in range(hiddenSize)]
         self.bias_output = [random.uniform(-1, 1) for _ in range(outputSize)]
 
     def iterateForward(self, inputs):
@@ -44,6 +47,12 @@ class NeuralNetwork():
         for i in range(len(self.weights_inputToHidden)):
             activation = sum(w * inp for w, inp in zip(self.weights_inputToHidden[i], inputs)) + self.bias_hidden[i]
             hidden.append(sigmoid(activation))
+
+        #get hidden2 layer calculations
+        hidden2 = []
+        for i in range(len(self.weights_hiddenToHidden)):
+            activation = sum(w * inp for w, inp in zip(self.weights_hiddenToHidden[i], inputs)) + self.bias_hidden2[i]
+            hidden2.append(sigmoid(activation))
 
         #get output layer calculations
         outputs = []
@@ -72,9 +81,9 @@ class Car():
         self.angle = 0
         self.vel = (0, 0)
         self.friction = 0.98
-        self.accelaration = 240
-        self.maxVel = 240
-        self.turnRate = 150
+        self.accelaration = 240/60
+        self.maxVel = 240/60
+        self.turnRate = 150/60
 
         #visuals
         self.vertOffsets = [
@@ -118,7 +127,7 @@ class Car():
         self.nn = NeuralNetwork(self.numOfRays + 1, 6, 3)
         self.fitness = 0
 
-        self.life = 20
+        self.life = 20*60
 
     def updateVerts(self):
         for i in range(len(self.verts)):
@@ -152,20 +161,18 @@ class Car():
             pygame.draw.line(screen, (0, 0, 255), self.pos, self.closestTweenPoint)"""
 
     def move(self, dTs, road):
-        #apply friction with deltatime
-        frictionPerSecond = self.friction ** 60
-        frictionDeltaTime = frictionPerSecond ** dTs
-        self.vel = (self.vel[0] * frictionDeltaTime, self.vel[1] * frictionDeltaTime)
+        #apply friction
+        self.vel = (self.vel[0] * self.friction, self.vel[1] * self.friction)
 
         #apply velocity
-        self.pos = (self.pos[0] + self.vel[0] * dTs, self.pos[1] + self.vel[1] * dTs)
+        self.pos = (self.pos[0] + self.vel[0], self.pos[1] + self.vel[1])
 
         #get updated fitness
         if self.closestTweenPoint != None:
             self.fitness = road.cornerTweenPoints.index(self.closestTweenPoint)
 
         #update life 
-        self.life -= 1 * dTs
+        self.life -= 1
         if self.life <= 0:
             self.dead = True
 
@@ -173,7 +180,7 @@ class Car():
         #apply accelaration forward
         angleRad = math.radians(self.angle - 90)
         accelaration = (math.cos(angleRad) * self.accelaration, math.sin(angleRad) * self.accelaration)
-        self.vel = (self.vel[0] + accelaration[0]* strengthFactor * dTs, self.vel[1] + accelaration[1] * strengthFactor * dTs)
+        self.vel = (self.vel[0] + accelaration[0]* strengthFactor, self.vel[1] + accelaration[1] * strengthFactor)
 
         #clamp to max speed if neccesary
         mag = math.sqrt(self.vel[0] ** 2 + self.vel[1] ** 2)
@@ -184,7 +191,7 @@ class Car():
 
     def turn(self, direction, dTs):
         #apply turn to angle
-        self.angle += direction * self.turnRate * dTs
+        self.angle += direction * self.turnRate
 
         #normalize angle
         self.angle = self.angle % 360
@@ -610,7 +617,7 @@ while running:
     if allDied:
         #get top of current gen
         sortedCars = sorted(cars, key=lambda car: car.fitness)
-        topCars = sortedCars[-5:]
+        topCars = copy.deepcopy(sortedCars[-5:])
 
         #add to all time top
         #alltopcars.extend(topCars)                                                            #straight copy copies objects which get altered, deep copy copies object traits which persist
@@ -618,26 +625,32 @@ while running:
 
         #choose parent randomly from top of all time top for only best traits so far
         alltopcars = sorted(alltopcars, key=lambda car: car.fitness)
-        chosenNext = alltopcars[-5:]
+        chosenNext = copy.deepcopy(alltopcars[-5:])
 
         print("------ Top 5 best performing all time: ------")
         for car in chosenNext:
             print(car.fitness)
+        print(str(sortedCars[-1].fitness) + " (best this gen)" )
+
+        #introduce elitism
+        cars[0] = copy.deepcopy(alltopcars[-1])
 
         #copy weights of best car to all other and mutate
-        for car in cars:
+        for car in cars[1:]:    #skip first car, elite)
             randomParent = chosenNext[random.randint(0, len(chosenNext)-1)]
 
-            car.nn.weights_inputToHidden = mutate2D(randomParent.nn.weights_inputToHidden)
-            car.nn.weights_hiddenToOutput = mutate2D(randomParent.nn.weights_hiddenToOutput)
+            car.nn.weights_inputToHidden = mutate2D(copy.deepcopy(randomParent.nn.weights_inputToHidden))
+            car.nn.weights_hiddenToHidden = mutate2D(copy.deepcopy(randomParent.nn.weights_hiddenToHidden))
+            car.nn.weights_hiddenToOutput = mutate2D(copy.deepcopy(randomParent.nn.weights_hiddenToOutput))
 
-            car.nn.bias_hidden = mutate1D(randomParent.nn.bias_hidden)
-            car.nn.bias_output = mutate1D(randomParent.nn.bias_output)
+            car.nn.bias_hidden = mutate1D(copy.deepcopy(randomParent.nn.bias_hidden))
+            car.nn.bias_hidden2 = mutate1D(copy.deepcopy(randomParent.nn.bias_hidden2))
+            car.nn.bias_output = mutate1D(copy.deepcopy(randomParent.nn.bias_output))
 
         #reinit cars
         for car in cars:
             car.dead = False
-            car.life = 20
+            car.life = 20 * 60
             car.pos = (151, 673)
             car.vel = (0, 0)
             car.angle = 0
