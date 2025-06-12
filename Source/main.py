@@ -3,6 +3,8 @@ import pygame
 import math
 import random
 
+import copy
+
 #initialize pygame window
 pygame.init()
 screenWidth = 1200
@@ -322,7 +324,7 @@ class Road():
                 self.cornerTweenPoints.append((self.cornerPoints[i][0] + v[0] * (j / self.tweenAccuracy), self.cornerPoints[i][1] + v[1] * (j / self.tweenAccuracy)))
 
         #initialize track sides
-        self.roadThickness = 100
+        self.roadThickness = 70
 
         #generate left and right side seperatly
         self.leftSidePoints = []
@@ -509,7 +511,7 @@ def angleToVector(deg):
 def sigmoid(x):
     return 1 / (1 + math.exp(-x))
 
-def mutate2D(weights, mutationRate = 0.4, mutationStrength = 0.01):
+def mutate2D(weights, mutationRate = 0.2, mutationStrength = 0.03):
     new_weights = weights
 
     for i in range(len(new_weights)):
@@ -519,7 +521,7 @@ def mutate2D(weights, mutationRate = 0.4, mutationStrength = 0.01):
 
     return new_weights
 
-def mutate1D(weights, mutationRate = 0.4, mutationStrength = 0.01):
+def mutate1D(weights, mutationRate = 0.2, mutationStrength = 0.03):
     new_weights = weights
 
     for i in range(len(new_weights)):
@@ -606,13 +608,26 @@ while running:
         allDied = True
 
     if allDied:
+        #get top of current gen
         sortedCars = sorted(cars, key=lambda car: car.fitness)
-        fromIndex = int(len(sortedCars) * 0.1)
-        topCars = sortedCars[fromIndex:]
-        alltopcars.extend(topCars)
+        topCars = sortedCars[-5:]
+
+        #add to all time top
+        #alltopcars.extend(topCars)                                                            #straight copy copies objects which get altered, deep copy copies object traits which persist
+        alltopcars.extend([copy.deepcopy(car) for car in topCars])
+
+        #choose parent randomly from top of all time top for only best traits so far
+        alltopcars = sorted(alltopcars, key=lambda car: car.fitness)
+        chosenNext = alltopcars[-5:]
+
+        print("------ Top 5 best performing all time: ------")
+        for car in chosenNext:
+            print(car.fitness)
+
         #copy weights of best car to all other and mutate
         for car in cars:
-            randomParent = alltopcars[random.randint(0, len(alltopcars)-1)]
+            randomParent = chosenNext[random.randint(0, len(chosenNext)-1)]
+
             car.nn.weights_inputToHidden = mutate2D(randomParent.nn.weights_inputToHidden)
             car.nn.weights_hiddenToOutput = mutate2D(randomParent.nn.weights_hiddenToOutput)
 
@@ -628,7 +643,6 @@ while running:
             car.angle = 0
 
         generation += 1
-        print(topCars[-1].fitness)
 
     gen_text = font.render(f"{generation}", True, (255, 255, 255))
     screen.blit(gen_text, (10, 40))
