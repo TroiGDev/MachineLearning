@@ -62,23 +62,126 @@ class NeuralNetwork():
         #get hidden2 layer calculations
         hidden2 = []
         for i in range(len(self.weights_hiddenToHidden)):
-            activation = sum(w * inp for w, inp in zip(self.weights_hiddenToHidden[i], inputs)) + self.bias_hidden2[i]
+            activation = sum(w * inp for w, inp in zip(self.weights_hiddenToHidden[i], hidden)) + self.bias_hidden2[i]
             hidden2.append(self.sigmoid(activation))
 
         #get output layer calculations
         outputs = []
+        activations = []
         for i in range(len(self.weights_hiddenToOutput)):
-            activation = sum(w * h for w, h in zip(self.weights_hiddenToOutput[i], hidden)) + self.bias_output[i]
-            outputs.append(self.sigmoid(activation))
+            activation = sum(w * h for w, h in zip(self.weights_hiddenToOutput[i], hidden2)) + self.bias_output[i]
+            activations.append(activation)
+
+            #replaced by softmax
+            """outputs.append(self.sigmoid(activation))"""
+
+        #use softmax instead of sigmoid for last layer
+        exp_outputs = [math.exp(o) for o in activations]
+        sum_exp = sum(exp_outputs)
+        outputs = [eo / sum_exp for eo in exp_outputs]
 
         #return all layer outputs for correct graident calculations in elarning
         return hidden, hidden2, outputs
     
     def sigmoid(self, x):
-        return 1 / (1 + math.exp(-x))
+        if x >= 0:
+            z = math.exp(-x)
+            return 1 / (1 + z)
+        else:
+            z = math.exp(x)
+            return z / (1 + z)
     
     def sigmoidDerivative(self, x):
         return x * (1 - x)
+    
+    def loadWeights(self, filename):
+        with open(filename, "r") as file:
+            content = file.readlines()
+
+            #split first line into rows by comma
+            content[0] = content[0].rstrip()    #remove newline char
+            arr = content[0].split(",")
+            pArr = []
+            for row in arr[:-1]:
+                #split each row into array and add it to parent array
+                pArr.append([float(x) for x in row.split(" ")])
+
+            #apply parent array to nn var weights
+            self.weights_inputToHidden = pArr
+
+            #split first line into rows by comma
+            content[1] = content[1].rstrip()    #remove newline char
+            arr = content[1].split(",")
+            pArr = []
+            for row in arr[:-1]:
+                #split each row into array and add it to parent array
+                pArr.append([float(x) for x in row.split(" ")])
+
+            #apply parent array to nn var weights
+            self.weights_hiddenToHidden = pArr
+
+            #split first line into rows by comma
+            content[2] = content[2].rstrip()    #remove newline char
+            arr = content[2].split(",")
+            pArr = []
+            for row in arr[:-1]:
+                #split each row into array and add it to parent array
+                pArr.append([float(x) for x in row.split(" ")])
+
+            #apply parent array to nn var weights
+            self.weights_hiddenToOutput = pArr
+
+            #load biases
+            self.bias_hidden = [float(x) for x in content[3].split(" ")]
+            self.bias_hidden2 = [float(x) for x in content[4].split(" ")]
+            self.bias_output = [float(x) for x in content[5].split(" ")]
+
+            print("Loaded saved weights!")
+
+    def saveWeights(self, filename):
+        with open(filename, "w") as file:
+            
+            #save weights1
+            fString1 = ""
+            for row in self.weights_inputToHidden:
+                #convert row into string, values seperated by spaces
+                rowString = ' '.join(str(f) for f in row)
+
+                #add it to fstring with a comma at the end
+                fString1 += rowString + ","
+
+            #add new line and write
+            file.write(fString1 + "\n")
+
+            #save weights2
+            fString2 = ""
+            for row in self.weights_hiddenToHidden:
+                #convert row into string, values seperated by spaces
+                rowString = ' '.join(str(f) for f in row)
+
+                #add it to fstring with a comma at the end
+                fString2 += rowString + ","
+
+            #add new line and write
+            file.write(fString2 + "\n")
+
+            #save weigths3
+            fString3 = ""
+            for row in self.weights_hiddenToOutput:
+                #convert row into string, values seperated by spaces
+                rowString = ' '.join(str(f) for f in row)
+
+                #add it to fstring with a comma at the end
+                fString3 += rowString + ","
+
+            #add new line and write
+            file.write(fString3 + "\n")
+
+            #save biases
+            file.write(' '.join(str(f) for f in self.bias_hidden) + "\n")
+            file.write(' '.join(str(f) for f in self.bias_hidden2) + "\n")
+            file.write(' '.join(str(f) for f in self.bias_output) + "\n")
+
 
 class Grid():
     def __init__(self):
@@ -119,7 +222,7 @@ class Grid():
 
     def learnFromExample(self):
         #get random example
-        randomExampleIndex = random.randint(0, len(x_train))
+        randomExampleIndex = random.randint(0, len(x_train) - 1)
         self.grid, label = loadTrainExample(randomExampleIndex)
         self.grid1d = [pixel for row in self.grid for pixel in row]
 
@@ -171,7 +274,7 @@ class Grid():
         #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         #weight update using gradient descent
-        learningRate = 0.01
+        learningRate = 0.0007       #for 10k-50k training examples
 
         # Update input-to-hidden weights
         for i in range(len(self.nn.weights_inputToHidden)):
@@ -221,16 +324,36 @@ def loadTestExample(i):
 #get grid
 grid = Grid()
 
-#initial learn from examples
-numOfExamplesToTrainFrom = 10_000
-for i in range(numOfExamplesToTrainFrom):
-    grid.learnFromExample()
+#filesacving weights after learning
+filename = "weights3.txt"
+reLearn = False
 
-    #some loading printing
-    if i % 50 == 0:
-        #print precantage finished
-        print(str(round((i / numOfExamplesToTrainFrom * 100), 1)) + "%")
-print("Finished!")
+#initial learn from examples
+if reLearn:
+
+    numOfEpochs = 2.5      #r1 epoch - 1 full dataset
+    numOfExamplesToTrainFrom = int(numOfEpochs * len(x_train))
+
+    for i in range(numOfExamplesToTrainFrom):
+        try:
+            grid.learnFromExample()
+        except Exception as e:
+            grid.nn.saveWeights(filename)
+
+        #some loading printing
+        if i % 50 == 0:
+            #print precantage finished
+            perc = str(round((i / numOfExamplesToTrainFrom * 100), 2)) + "%"
+            bar = "■" * round(((i / numOfExamplesToTrainFrom) * 50))
+            emptyBar = "□" * (50 - len(bar))
+            print(f"\r" + perc + " " + bar + emptyBar, end='')
+
+    print("Finished!")
+
+    #save resulted weights
+    grid.nn.saveWeights(filename)
+else:
+    grid.nn.loadWeights(filename)
 
 #clear grid
 grid.grid = [[0 for _ in range(resolution)] for _ in range(resolution)]
@@ -275,12 +398,13 @@ while running:
 
         gridPos = (int(clamp(gridPos[0], 0, resolution)), int(clamp(gridPos[1], 0, resolution)))
 
-        grid.grid[gridPos[0]][gridPos[1]] += 0.6
+        if(gridPos[0] >= 0 and gridPos[0] < resolution) and (gridPos[1] >= 0 and gridPos[1] < resolution):
+            grid.grid[gridPos[0]][gridPos[1]] += 0.6
 
-        dirs = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-        for dir in dirs:
-            if (gridPos[0] + dir[0] >= 0 and gridPos[0] + dir[0] < resolution) and (gridPos[1] + dir[1] >= 0 and gridPos[1] + dir[1] < resolution):
-                grid.grid[gridPos[0] + dir[0]][gridPos[1] + dir[1]] += 0.3
+            dirs = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+            for dir in dirs:
+                if (gridPos[0] + dir[0] >= 0 and gridPos[0] + dir[0] < resolution) and (gridPos[1] + dir[1] >= 0 and gridPos[1] + dir[1] < resolution):
+                    grid.grid[gridPos[0] + dir[0]][gridPos[1] + dir[1]] += 0.3
 
     #drwa grid
     grid.draw()
