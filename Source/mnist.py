@@ -1,3 +1,11 @@
+
+#todo:
+#shuffle data instead of randomly sampling
+#log otal accuracy
+#different backpropogation implementation (possibly external libs)
+
+#many more epochs
+
 import pygame
 
 import math
@@ -8,12 +16,19 @@ import time
 import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'       #the os import and this call are to remove an annoying terminal massage about floating point accuracy
 
-from tensorflow.keras.datasets import mnist
+#get dataset
+import torch
+from torchvision import datasets, transforms
 
-# Load data
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-# Normalize to 0–1
-x_train, x_test = x_train / 255.0, x_test / 255.0
+transform = transforms.Compose([transforms.ToTensor(),])
+train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+
+images = []
+labels = []
+for i in range(len(train_dataset)):
+    image, label = train_dataset[i]
+    images.append(image.squeeze().tolist())
+    labels.append(label)
 
 #initialize pygame window
 pygame.init()
@@ -23,8 +38,11 @@ screenHeight = 700
 resolution = 28
 tileSize = screenWidth /resolution
 
-screen = pygame.display.set_mode((screenWidth, screenHeight))
-pygame.display.set_caption('MNIST digit recognition')
+screen = None
+def initializeWindowDisplay():
+    screen = pygame.display.set_mode((screenWidth, screenHeight))
+    pygame.display.set_caption('MNIST digit recognition')
+    return screen
 
 #fps display
 clock = pygame.time.Clock()
@@ -206,11 +224,14 @@ class Grid():
     def draw(self):
         for i in range(len(self.grid)):
             for j in range(len(self.grid[i])):
+
+                color = 255 * self.grid[i][j]
+                if color > 255:
+                    color = 255
+                if color < 0:
+                    color = 0
                 
-                if self.grid[i][j] > 1:
-                    self.grid[i][j] = 1
-                
-                pygame.draw.rect(screen, (255 * self.grid[i][j], 255 * self.grid[i][j], 255 * self.grid[i][j]), pygame.Rect(i * self.tileSize, j * self.tileSize, self.tileSize, self.tileSize))
+                pygame.draw.rect(screen, (color, color, color), pygame.Rect(j * self.tileSize, i * self.tileSize, self.tileSize, self.tileSize))
 
     def performRecognition(self, doPrint):
         #get 28by28 1d array of 0 to 1 floats from image
@@ -235,7 +256,7 @@ class Grid():
 
     def learnFromExample(self):
         #get random example
-        randomExampleIndex = random.randint(0, len(x_train) - 1)
+        randomExampleIndex = random.randint(0, len(images) - 1)
         self.grid, label = loadTrainExample(randomExampleIndex)
         self.grid1d = [pixel for row in self.grid for pixel in row]
 
@@ -287,7 +308,7 @@ class Grid():
         #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         #weight update using gradient descent
-        learningRate = 0.0007       #for 10k-50k training examples
+        learningRate = 0.01       #for 10k-50k training examples
 
         # Update input-to-hidden weights
         for i in range(len(self.nn.weights_inputToHidden)):
@@ -321,14 +342,8 @@ def clamp(value, min_value, max_value):
     return max(min_value, min(value, max_value))
 
 def loadTrainExample(i):
-    example = x_train[i]
-    label = y_train[i]
-
-    return example, label
-
-def loadTestExample(i):
-    example = x_test[i]
-    label = y_test[i]
+    example = images[i]
+    label = int(labels[i])
 
     return example, label
 
@@ -351,14 +366,14 @@ def formatTime(seconds):
 grid = Grid()
 
 #filesacving weights after learning
-filename = "weights5.txt"
+filename = "weights6.txt"
 reLearn = False
 
 #initial learn from examples
 if reLearn:
 
     numOfEpochs = 2.5      #r1 epoch - 1 full dataset
-    numOfExamplesToTrainFrom = int(numOfEpochs * len(x_train))
+    numOfExamplesToTrainFrom = int(numOfEpochs * len(images))
 
     startTime = time.time()
 
@@ -392,8 +407,14 @@ if reLearn:
 else:
     grid.nn.loadWeights(filename)
 
-#clear grid
+#clear grid after last train example
 grid.grid = [[0 for _ in range(resolution)] for _ in range(resolution)]
+
+#create window after learning
+screen = initializeWindowDisplay()
+
+"""grid.grid, p = loadTrainExample(random.randint(0, len(images) - 1))
+print(p)"""
 
 #get initial ticks
 prevT = pygame.time.get_ticks()
@@ -431,7 +452,7 @@ while running:
     buttons = pygame.mouse.get_pressed()
     if buttons[0]:
         screenPos = pygame.mouse.get_pos()
-        gridPos = (screenPos[0] // grid.tileSize, screenPos[1] // grid.tileSize)
+        gridPos = (screenPos[1] // grid.tileSize, screenPos[0] // grid.tileSize)
 
         gridPos = (int(clamp(gridPos[0], 0, resolution)), int(clamp(gridPos[1], 0, resolution)))
 
