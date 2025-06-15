@@ -3,6 +3,7 @@ import pygame
 import math
 import random
 
+import time
 
 import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'       #the os import and this call are to remove an annoying terminal massage about floating point accuracy
@@ -57,13 +58,13 @@ class NeuralNetwork():
         hidden = []
         for i in range(len(self.weights_inputToHidden)):
             activation = sum(w * inp for w, inp in zip(self.weights_inputToHidden[i], inputs)) + self.bias_hidden[i]
-            hidden.append(self.sigmoid(activation))
+            hidden.append(self.ReLU(activation))
 
         #get hidden2 layer calculations
         hidden2 = []
         for i in range(len(self.weights_hiddenToHidden)):
             activation = sum(w * inp for w, inp in zip(self.weights_hiddenToHidden[i], hidden)) + self.bias_hidden2[i]
-            hidden2.append(self.sigmoid(activation))
+            hidden2.append(self.ReLU(activation))
 
         #get output layer calculations
         outputs = []
@@ -83,7 +84,7 @@ class NeuralNetwork():
         #return all layer outputs for correct graident calculations in elarning
         return hidden, hidden2, outputs
     
-    def sigmoid(self, x):
+    """def sigmoid(self, x):
         if x >= 0:
             z = math.exp(-x)
             return 1 / (1 + z)
@@ -92,7 +93,19 @@ class NeuralNetwork():
             return z / (1 + z)
     
     def sigmoidDerivative(self, x):
-        return x * (1 - x)
+        return x * (1 - x)"""
+    
+    def ReLU(self, x):
+        if isinstance(x, list):
+            return [self.ReLU(i) for i in x]
+        else:
+            return max(0, x)
+        
+    def ReLUDerivative(self, x):
+        if isinstance(x, list):
+            return [self.ReLUDerivative(i) for i in x]
+        else:
+            return 1.0 if x > 0 else 0.0
     
     def loadWeights(self, filename):
         with open(filename, "r") as file:
@@ -255,7 +268,7 @@ class Grid():
         delta_hidden2 = []
         for h in range(len(hidden2)):
             error = sum(outputGradient[o] * self.nn.weights_hiddenToOutput[o][h] for o in range(len(outputGradient)))
-            delta_hidden2.append(error * self.nn.sigmoidDerivative(hidden2[h]))
+            delta_hidden2.append(error * self.nn.ReLUDerivative(hidden2[h]))
 
         # Gradients for hidden1 to hidden2 weights and hidden2 biases
         d_weights_hiddenToHidden = [[delta_hidden2[h2] * hidden1[h1] for h1 in range(len(hidden1))] for h2 in range(len(delta_hidden2))]
@@ -265,7 +278,7 @@ class Grid():
         delta_hidden1 = []
         for h in range(len(hidden1)):
             error = sum(delta_hidden2[h2] * self.nn.weights_hiddenToHidden[h2][h] for h2 in range(len(delta_hidden2)))
-            delta_hidden1.append(error * self.nn.sigmoidDerivative(hidden1[h]))
+            delta_hidden1.append(error * self.nn.ReLUDerivative(hidden1[h]))
 
         # Gradients for input to hidden1 weights and hidden1 biases
         d_weights_inputToHidden = [[delta_hidden1[h] * self.grid1d[i] for i in range(len(self.grid1d))]for h in range(len(delta_hidden1))]
@@ -319,13 +332,26 @@ def loadTestExample(i):
 
     return example, label
 
+def formatTime(seconds):
+    seconds = int(seconds)
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    elif minutes > 0:
+        return f"{minutes}m {secs}s"
+    else:
+        return f"{secs}s"
+
 #VARIABLE INITIALIZATION -----------------------------------------------------------------------------------------------------------------------------------------
 
 #get grid
 grid = Grid()
 
 #filesacving weights after learning
-filename = "weights3.txt"
+filename = "weights5.txt"
 reLearn = False
 
 #initial learn from examples
@@ -334,19 +360,30 @@ if reLearn:
     numOfEpochs = 2.5      #r1 epoch - 1 full dataset
     numOfExamplesToTrainFrom = int(numOfEpochs * len(x_train))
 
+    startTime = time.time()
+
     for i in range(numOfExamplesToTrainFrom):
         try:
             grid.learnFromExample()
+
+            #some loading printing
+            if i % 50 == 0:
+                #print precantage finished
+                perc = str(round((i / numOfExamplesToTrainFrom * 100), 2)) + "%"
+                bar = "■" * round(((i / numOfExamplesToTrainFrom) * 50))
+                emptyBar = "□" * (50 - len(bar))
+
+                #get  remaining time estimate
+                elapsedTime = time.time() - startTime
+                avgTimePerIteration = elapsedTime / (i+1)
+                remainingSeconds = avgTimePerIteration * (numOfExamplesToTrainFrom - (i+1))
+
+                print(f"\r" + perc + " " + bar + emptyBar + " " + formatTime(remainingSeconds), end='')
+
         except Exception as e:
             grid.nn.saveWeights(filename)
 
-        #some loading printing
-        if i % 50 == 0:
-            #print precantage finished
-            perc = str(round((i / numOfExamplesToTrainFrom * 100), 2)) + "%"
-            bar = "■" * round(((i / numOfExamplesToTrainFrom) * 50))
-            emptyBar = "□" * (50 - len(bar))
-            print(f"\r" + perc + " " + bar + emptyBar, end='')
+            print(e)
 
     print("Finished!")
 
@@ -379,9 +416,9 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-        """if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                pass"""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_c:
+                grid.grid = [[0 for _ in range(resolution)] for _ in range(resolution)]
         
         if event.type == pygame.MOUSEBUTTONUP:
             #print recognised digit
